@@ -1,0 +1,9 @@
+CAN ID - EXAMPLE               - IMPORTANT VALUE - DESCRIPTION
+
+418    - 35 FE 34 23 55 0 4 0  - 35              - 5th Gear
+418    - 34 FE 30 69 44 0 4 0  - 34              - 4th Gear
+418    - 33 FE 30 6C 33 0 1 0  - 33              - 3rd Gear
+418    - 32 FE 30 69 22 0 1 0  - 32              - 2nd Gear
+418    - 31 FE 30 60 11 0 1 0  - 31              - 1st Gear
+418    - 4E FE B1 56 0 0 4 0   - 4E              - Neutral
+418    - 52 FE B1 73 BB 0 2 0  - 52              - Reverse
