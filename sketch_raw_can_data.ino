@@ -1,25 +1,25 @@
 #include <SPI.h>
 #include <mcp_can.h>
 
-// Pin definitions
-#define CS_PIN 5   // Chip Select (CS) pin for MCP2515
-#define INT_PIN 21 // Interrupt pin for MCP2515
+// Pin-Definitionen
+#define CS_PIN 5   // Chip Select (CS) Pin
+#define INT_PIN 21 // Interrupt Pin
 
-// Create MCP2515 object with the specified CS pin
+// MCP2515 Objekt
 MCP_CAN CAN(CS_PIN);
 
 void setup() {
-  Serial.begin(115200); // Initialize serial communication at 115200 baud rate
+  Serial.begin(115200);
 
-  // Initialize the MCP2515 CAN controller
+  // Initialisierung des MCP2515
   if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) == CAN_OK) {
-    Serial.println("MCP2515 OK"); // Print success message if initialization is successful
+    Serial.println("MCP2515 OK");
   } else {
-    Serial.println("MCP2515 FAIL"); // Print failure message if initialization fails
-    while (1); // Enter infinite loop to prevent further execution
+    Serial.println("MCP2515 FAIL");
+    while (1);
   }
 
-  // Set MCP2515 to normal operating mode
+  // Setze MCP2515 in den normalen Modus
   CAN.setMode(MCP_NORMAL);
 }
 
@@ -34,16 +34,19 @@ void loop() {
     CAN.readMsgBuf(&rxId, &len, buf);
 
     // Print the CAN ID in hexadecimal format (3 digits, padded with zeros if necessary)
-    Serial.printf("%03lX ", rxId); 
+    Serial.printf("%03lX; ", rxId); 
     
     // Print the length of the message (number of bytes) without any label
     Serial.print(len); 
-    
-    // Print each byte of the message in hexadecimal format, separated by spaces
+    Serial.print("; ");
+
+    // Print each byte of the message in hexadecimal format, separated by commas
     for (int i = 0; i < len; i++) {
-        Serial.printf(" %02X", buf[i]); // Each byte is formatted as a 2-digit hexadecimal number
+        if (i > 0) Serial.print(", ");  // Add a comma between bytes
+        Serial.printf("%02X", buf[i]); // Each byte is formatted as a 2-digit hexadecimal number
     }
     
     Serial.println(); // Print a newline to separate each message
   }
-} 
+}
+
