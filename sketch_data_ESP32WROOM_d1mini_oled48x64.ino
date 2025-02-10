@@ -91,7 +91,7 @@ void processCANMessage(long unsigned int rxId, unsigned char len, unsigned char 
   if (rxId == 0x608 && len >= 8) updateValue(lastCoolantTemp, String(buf[0] - 40), COOLANT_TEMP, "Coolant Temp", "C");
   if (rxId == 0x418 && len >= 8) updateValue(lastGear, getGear(buf[0]), GEAR, "Gear", "");
   if (rxId == 0x212 && len >= 8) updateValue(lastRPM, String((buf[2] << 8) | buf[3]), RPM, "RPM", "");
-  if (rxId == 0x23A && len >= 2) updateValue(lastSpeed, String(buf[0] * 0.1, 1), SPEED, "Speed", "km/h");
+  if (rxId == 0x23A && len >= 2) updateValue(lastSpeed, String(buf[0] << 8) | buf[1] * 0.1, 1), SPEED, "Speed", "km/h");
 }
 
 void updateValue(String &lastValue, String newValue, Page page, String title, String unit) {
