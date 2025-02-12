@@ -17,7 +17,7 @@ MCP_CAN CAN(CS_PIN);
 Adafruit_SSD1306 display(OLED_RESET);
 
 // Seiten-Index
-enum Page { OIL_TEMP, FUEL_LEVEL, COOLANT_TEMP, GEAR, RPM, SPEED };
+enum Page { OIL_TEMP, FUEL_LEVEL, COOLANT_TEMP, GEAR, RPM, SPEED, CONSUMPTION };
 Page currentPage = SPEED;
 
 // Werte als Strings
@@ -27,6 +27,7 @@ String lastCoolantTemp = "--";
 String lastSpeed = "--";
 String lastRPM = "--";
 String lastGear = "-";
+String lastConsumption = "--";
 
 void setup() {
   Serial.begin(115200);
@@ -36,7 +37,7 @@ void setup() {
   display.setTextSize(2);
   display.setTextColor(WHITE);
   display.setCursor(0, 0);
-  display.println("69");
+  display.println("Start");
   display.display();
   delay(2000);
   display.clearDisplay();
@@ -56,12 +57,10 @@ void setup() {
 
 void loop() {
   if (digitalRead(TOUCH_PIN) == HIGH) {  
-    // Wenn der Touchsensor gedrückt wird, Seite wechseln
-    currentPage = static_cast<Page>((currentPage + 1) % 6);
+    currentPage = static_cast<Page>((currentPage + 1) % 7); 
     updateDisplay();
-    delay(300);  // Debounce für den Touchsensor
+    delay(300);
   } else {  
-    // Sonst normal CAN-Daten verarbeiten
     if (CAN.checkReceive() == CAN_MSGAVAIL) {
       long unsigned int rxId;
       unsigned char len = 0;
@@ -73,7 +72,6 @@ void loop() {
 }
 
 void processCANMessage(long unsigned int rxId, unsigned char len, unsigned char *buf) {
-  
   Serial.print("Received CAN ID: 0x");
   Serial.print(rxId, HEX);
   Serial.print(" | Data: ");
@@ -82,16 +80,14 @@ void processCANMessage(long unsigned int rxId, unsigned char len, unsigned char 
     Serial.print(" ");
   }
   Serial.println();
-  
-  
-  
-  
+
   if (rxId == 0x308 && len >= 8) updateValue(lastOilTemp, String(buf[5] - 40), OIL_TEMP, "Oil Temp", "C");
-  if (rxId == 0x408 && len >= 8) updateValue(lastFuelLevel, String((buf[0] * 0.5) - 5, 1), FUEL_LEVEL, "Fuel Level", "L");
+  if (rxId == 0x408 && len >= 8) updateValue(lastFuelLevel, String((buf[0] * 0.5), 1), FUEL_LEVEL, "Fuel Level", "L");
   if (rxId == 0x608 && len >= 8) updateValue(lastCoolantTemp, String(buf[0] - 40), COOLANT_TEMP, "Coolant Temp", "C");
   if (rxId == 0x418 && len >= 8) updateValue(lastGear, getGear(buf[0]), GEAR, "Gear", "");
   if (rxId == 0x212 && len >= 8) updateValue(lastRPM, String((buf[2] << 8) | buf[3]), RPM, "RPM", "");
   if (rxId == 0x23A && len >= 2) updateValue(lastSpeed, String(((buf[0] << 8) | buf[1]) * 0.1, 1), SPEED, "Speed", "km/h");
+  if (rxId == 0x608 && len >= 8) updateValue(lastConsumption, String(((buf[5] << 8) | buf[6]) / 100.0), CONSUMPTION, "Consumption", "L/h");
 }
 
 void updateValue(String &lastValue, String newValue, Page page, String title, String unit) {
@@ -109,6 +105,7 @@ void updateDisplay() {
     case GEAR: displayPage("Gear", lastGear, ""); break;
     case RPM: displayPage("RPM", lastRPM, ""); break;
     case SPEED: displayPage("Speed", lastSpeed, "km/h"); break;
+    case CONSUMPTION: displayPage("Consumption", lastConsumption, "L/h"); break;
   }
 }
 
