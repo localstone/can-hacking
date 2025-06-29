@@ -34,13 +34,14 @@ void setup() {
 
   u8g2.begin();
 
-  // Touch-Pin wie original
+  // Touch-Pin (kein Pullup/Pulldown)
   pinMode(TOUCH_PIN, INPUT);
 
   // CAN init
   SPI.begin();
   if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ)!=CAN_OK) {
-    Serial.println("MCP FAIL"); while(1);
+    Serial.println("MCP FAIL");
+    while(1);
   }
   CAN.setMode(MCP_NORMAL);
 
@@ -55,11 +56,14 @@ void setup() {
 }
 
 void loop() {
+  // Blättern
   if (digitalRead(TOUCH_PIN)==HIGH) {
     currentPage = Page((currentPage+1)%7);
     drawFullPage();
     delay(200);  // entprellen
-  } else if (CAN.checkReceive()==CAN_MSGAVAIL) {
+  }
+  // CAN-Empfang
+  else if (CAN.checkReceive()==CAN_MSGAVAIL) {
     uint32_t id; uint8_t len, buf[8];
     CAN.readMsgBuf(&id,&len,buf);
     handleCAN(id,len,buf);
@@ -89,10 +93,6 @@ void drawFullPage() {
 void updateValue(Page p, const String &v) {
   if (v==lastValue[p] || p!=currentPage) return;
   lastValue[p]=v;
-
-  // nur Zahlen+Einheit-Region löschen & neu zeichnen
-  u8g2.clearBuffer();
-  // (alternativ u8g2.clearBuffer() + drawFullPage() wenn's simpler ist)
   drawFullPage();
 }
 
@@ -114,9 +114,19 @@ void handleCAN(uint32_t id, uint8_t len, uint8_t *b) {
     case 0x212:
       if(len>=4) updateValue(RPM, String((b[2]<<8)|b[3]));
       break;
-    case 0x23A:
-      if(len>=2) updateValue(SPEED, String(((b[0]<<8)|b[1])*0.01,1));
+      
+    case 0x23A:  // Echte Radsignal-Geschwindigkeit: D0 = High-Byte, D1 = Low-Byte
+      if (len >= 2) {
+        // beiden Bytes zu einem 16-Bit-Wert zusammenfügen
+        uint16_t raw = (b[0] << 8) | b[1];
+        // laut Spezifikation ist raw*0.1 = km/h
+        float speed = raw * 0.1;
+        updateValue(SPEED, String(speed, 1));
+      }
       break;
+
+
+
   }
 }
 
