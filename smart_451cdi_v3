@@ -1,0 +1,176 @@
+//only-speed-not-working
+#include <SPI.h>
+#include <mcp_can.h>
+#include <Wire.h>
+#include <U8g2lib.h>
+
+// Pin-Definitionen
+#define CS_PIN     5
+#define TOUCH_PIN 33
+#define SDA_PIN   32
+#define SCL_PIN   25
+
+// Hardware-I2C Display (SH1106/SSD1306)
+U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(
+  U8G2_R0, /* reset=*/ U8X8_PIN_NONE
+);
+
+// Seitenübersicht
+enum Page { OVERVIEW, SPEED, OIL_TEMP, FUEL_LEVEL, COOLANT_TEMP, GEAR, RPM, CONSUMPTION };
+Page currentPage = OVERVIEW;
+
+// Letzte Werte
+String lastValue[8] = { "--", "--", "--", "--", "-", "--", "--", "--" };
+
+// Titel und Einheiten für Einzelseiten
+const char* titles[8] = { "Overview", "Speed", "Oil Temp", "Fuel Level", "Coolant Temp", "Gear", "RPM", "Consumption" };
+const char* units[8]  = { "", "km/h", "C", "L", "C", "", "rpm", "L/h" };
+
+MCP_CAN CAN(CS_PIN);
+
+// Funktionsdeklarationen
+void drawFullPage();
+void updateValue(Page p, const String &v);
+void handleCAN(uint32_t id, uint8_t len, uint8_t *b);
+String gearToStr(uint8_t g);
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(SDA_PIN, SCL_PIN);
+  Wire.setClock(400000);
+  u8g2.begin();
+  pinMode(TOUCH_PIN, INPUT);
+
+  SPI.begin();
+  if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) != CAN_OK) {
+    Serial.println("MCP FAIL");
+    while (1);
+  }
+  CAN.setMode(MCP_NORMAL);
+
+  // Startscreen
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_ncenB14_tr);
+  u8g2.drawStr(0,30,"Start");
+  u8g2.sendBuffer();
+  delay(800);
+
+  drawFullPage();
+}
+
+void loop() {
+  if (digitalRead(TOUCH_PIN) == HIGH) {
+    currentPage = Page((currentPage + 1) % 8);
+    drawFullPage();
+    delay(200);
+  }
+  if (CAN.checkReceive() == CAN_MSGAVAIL) {
+    uint32_t id;
+    uint8_t len, buf[8];
+    CAN.readMsgBuf(&id, &len, buf);
+    handleCAN(id, len, buf);
+  }
+}
+
+void drawFullPage() {
+  u8g2.clearBuffer();
+
+  if (currentPage == OVERVIEW) {
+    // Absolute Positionierung mit fixen Koordinaten
+    // Coolant Label ("Cool") bei (x=0, y=11)
+    u8g2.setFont(u8g2_font_6x12_tr);
+    u8g2.drawStr(0, 11, "Cool");
+    // Coolant Wert bei (0, y=21)
+    u8g2.setFont(u8g2_font_fub17_tr);
+        // Kühlmittelwert 6px tiefer
+    u8g2.drawStr(0, 31, lastValue[COOLANT_TEMP].c_str());
+
+    // Oil Label ("Oil") bei (x=128-? - label)
+    u8g2.setFont(u8g2_font_6x12_tr);
+    int oilLabelW = u8g2.getStrWidth("Oil");
+    u8g2.drawStr(85, 11, "Oil");
+    u8g2.setFont(u8g2_font_fub17_tr);
+    String ot = lastValue[OIL_TEMP];
+    u8g2.drawStr(85, 31, ot.c_str());
+
+    // Gang absolut bei y=33
+    u8g2.setFont(u8g2_font_fub30_tr);
+    String g = lastValue[GEAR];
+    int gw = u8g2.getStrWidth(g.c_str());
+    u8g2.drawStr((128 - gw) / 2, 33, g.c_str());
+
+    // Fuel (mit L) absolut bei (0, y=62)
+    u8g2.setFont(u8g2_font_fub17_tr);
+    String fuel = lastValue[FUEL_LEVEL] + "L";
+    u8g2.drawStr(0, 62, fuel.c_str());
+
+    // Speed als ganze Zahl absolut bei (x=128-valueWidth, y=62)
+    u8g2.setFont(u8g2_font_fub17_tr);
+    String s = lastValue[SPEED];
+    int dot = s.indexOf(',');
+    String si = (dot > 0) ? s.substring(0, dot) : s;
+    int sw = u8g2.getStrWidth(si.c_str());
+    u8g2.drawStr(80, 62, si.c_str());
+  }
+  else {
+    // Einzelseiten
+    u8g2.setFont(u8g2_font_6x12_tr);
+    u8g2.drawStr(0, 12, titles[currentPage]);
+    u8g2.setFont(u8g2_font_fub30_tr);
+    u8g2.drawStr(0, 52, lastValue[currentPage].c_str());
+    if (*units[currentPage]) {
+      u8g2.setFont(u8g2_font_6x12_tr);
+      u8g2.drawStr(0, 60, units[currentPage]);
+    }
+  }
+
+  u8g2.sendBuffer();
+}
+
+void updateValue(Page p, const String &v) {
+  if (v == lastValue[p] || (p != currentPage && currentPage != OVERVIEW)) return;
+  lastValue[p] = v;
+  drawFullPage();
+}
+
+void handleCAN(uint32_t id, uint8_t len, uint8_t *b) {
+  switch(id) {
+    case 0x23A: // Geschwindigkeit (1 Byte)
+      if (len >= 1) updateValue(SPEED, String(b[0]));
+      break;
+    case 0x308: // Öltemperatur
+      if (len >= 8) updateValue(OIL_TEMP, String(b[5] - 40));
+      break;
+    case 0x408: // Tankinhalt
+      if (len >= 1) {
+        float fl = b[0] * 0.5;
+        String v = String(fl, 1);
+        v.replace('.', ',');
+        updateValue(FUEL_LEVEL, v);
+      }
+      break;
+    case 0x608: // Kühlmitteltemp + Verbrauch
+      if (len >= 1) updateValue(COOLANT_TEMP, String(b[0] - 40));
+      if (len >= 8) updateValue(CONSUMPTION, String(((b[5] << 8) | b[6]) / 100.0, 2));
+      break;
+    case 0x418: // Gang
+      if (len >= 1) updateValue(GEAR, gearToStr(b[0]));
+      break;
+    case 0x212: // RPM
+      if (len >= 4) updateValue(RPM, String((b[2] << 8) | b[3]));
+      break;
+  }
+}
+
+String gearToStr(uint8_t g) {
+  switch(g) {
+    case 0x35: case 0x05: return "5";
+    case 0x34: case 0x04: return "4";
+    case 0x33: case 0x03: return "3";
+    case 0x32: case 0x02: return "2";
+    case 0x31: case 0x01: return "1";
+    case 0x4E: return "N";
+    case 0x52: return "R";
+    default:    return "-";
+  }
+}
