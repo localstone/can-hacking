@@ -1,4 +1,3 @@
-//only-speed-not-working
 #include <SPI.h>
 #include <mcp_can.h>
 #include <Wire.h>
@@ -135,9 +134,14 @@ void updateValue(Page p, const String &v) {
 
 void handleCAN(uint32_t id, uint8_t len, uint8_t *b) {
   switch(id) {
-    case 0x23A: // Geschwindigkeit (1 Byte)
-      if (len >= 1) updateValue(SPEED, String(b[0]));
+    case 0x200: // Geschwindigkeit von gesendeter ID 0x200
+      if (len >= 4) {
+        uint16_t rawSpeed = (b[2] << 8) | b[3]; // Byte 2 = High, Byte 3 = Low
+        float kmh = rawSpeed / 18.0;            // Umrechnung in km/h
+        updateValue(SPEED, String(kmh));     // eine Nachkommastelle, kein Komma ersetzen
+      }
       break;
+
     case 0x308: // Öltemperatur
       if (len >= 8) updateValue(OIL_TEMP, String(b[5] - 40));
       break;
