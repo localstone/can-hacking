@@ -3,76 +3,27 @@
 #include <Wire.h>
 #include <U8g2lib.h>
 
-// Pin-Definitionen
 #define CS_PIN     5
 #define TOUCH_PIN 33
 #define SDA_PIN   32
 #define SCL_PIN   25
 
-// Hardware-I2C Display (SH1106/SSD1306)
 U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(
   U8G2_R0, /* reset=*/ U8X8_PIN_NONE
 );
 
-// Seitenübersicht
 enum Page { OVERVIEW, SPEED, OIL_TEMP, FUEL_LEVEL, COOLANT_TEMP, GEAR, RPM, CONSUMPTION };
 Page currentPage = OVERVIEW;
 
-// Letzte Werte
 String lastValue[8] = { "--", "--", "--", "--", "-", "--", "--", "--" };
 
-// Titel und Einheiten für Einzelseiten
 const char* titles[8] = { "Overview", "Speed", "Oil Temp", "Fuel Level", "Coolant Temp", "Gear", "RPM", "Consumption" };
 const char* units[8]  = { "", "km/h", "C", "L", "C", "", "rpm", "L/h" };
 
 MCP_CAN CAN(CS_PIN);
 
-// Zeit-Tracking für Speed-Update
 unsigned long lastDrawTime = 0;
-const unsigned long speedUpdateInterval = 200; // 200 ms
-
-// Funktionsdeklarationen
-void drawFullPage();
-void updateValue(Page p, const String &v);
-void handleCAN(uint32_t id, uint8_t len, uint8_t *b);
-String gearToStr(uint8_t g);
-
-void setup() {
-  Serial.begin(115200);
-  Wire.begin(SDA_PIN, SCL_PIN);
-  Wire.setClock(400000);
-  u8g2.begin();
-  pinMode(TOUCH_PIN, INPUT);
-
-  SPI.begin();
-  if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) != CAN_OK) {
-    Serial.println("MCP FAIL");
-    while (1);
-  }
-  CAN.setMode(MCP_NORMAL);
-
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_ncenB14_tr);
-  u8g2.drawStr(0, 30, "Start");
-  u8g2.sendBuffer();
-  delay(800);
-
-  drawFullPage();
-}
-
-void loop() {
-  if (digitalRead(TOUCH_PIN) == HIGH) {
-    currentPage = Page((currentPage + 1) % 8);
-    drawFullPage();
-    delay(200);
-  }
-  if (CAN.checkReceive() == CAN_MSGAVAIL) {
-    uint32_t id;
-    uint8_t len, buf[8];
-    CAN.readMsgBuf(&id, &len, buf);
-    handleCAN(id, len, buf);
-  }
-}
+const unsigned long displayUpdateInterval = 100; // 100 ms
 
 void drawFullPage() {
   u8g2.clearBuffer();
@@ -117,14 +68,8 @@ void drawFullPage() {
 }
 
 void updateValue(Page p, const String &v) {
-  unsigned long now = millis();
-  bool valueChanged = (v != lastValue[p]);
-  bool forceSpeedUpdate = (p == SPEED && now - lastDrawTime >= speedUpdateInterval);
-
-  if ((valueChanged || forceSpeedUpdate) && (p == currentPage || currentPage == OVERVIEW)) {
-    if (valueChanged) lastValue[p] = v;
-    drawFullPage();
-    lastDrawTime = now;
+  if (v != lastValue[p]) {
+    lastValue[p] = v;
   }
 }
 
@@ -175,5 +120,49 @@ String gearToStr(uint8_t g) {
     case 0x4E: return "N";
     case 0x52: return "R";
     default:    return "-";
+  }
+}
+
+void setup() {
+  Serial.begin(115200);
+  Wire.begin(SDA_PIN, SCL_PIN);
+  Wire.setClock(400000);
+  u8g2.begin();
+  pinMode(TOUCH_PIN, INPUT);
+
+  SPI.begin();
+  if (CAN.begin(MCP_ANY, CAN_500KBPS, MCP_8MHZ) != CAN_OK) {
+    Serial.println("MCP FAIL");
+    while (1);
+  }
+  CAN.setMode(MCP_NORMAL);
+
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_ncenB14_tr);
+  u8g2.drawStr(0, 30, "Start");
+  u8g2.sendBuffer();
+  delay(800);
+
+  drawFullPage();
+}
+
+void loop() {
+  unsigned long now = millis();
+  if (now - lastDrawTime >= displayUpdateInterval) {
+    drawFullPage();
+    lastDrawTime = now;
+  }
+
+  if (digitalRead(TOUCH_PIN) == HIGH) {
+    currentPage = Page((currentPage + 1) % 8);
+    drawFullPage();
+    delay(200);
+  }
+
+  if (CAN.checkReceive() == CAN_MSGAVAIL) {
+    uint32_t id;
+    uint8_t len, buf[8];
+    CAN.readMsgBuf(&id, &len, buf);
+    handleCAN(id, len, buf);
   }
 }
